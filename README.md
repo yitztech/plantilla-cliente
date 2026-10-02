@@ -24,8 +24,7 @@ web/                      # página "Próximamente": sustituir por la aplicació
 ## Después de crear el repo
 
 1. **Paquetes de GHCR**: el primer push a `main` publica `<repo>-gateway` y `<repo>-web`. GitHub los crea
-   **privados** aunque el repo sea público. Con repo público, hacerlos públicos (organización → Packages →
-   paquete → Package settings → Change visibility). Con repo privado, el alta hace `docker login` en el servidor.
+   privados, y así pueden quedarse: el alta hace `docker login ghcr.io` en el servidor.
 2. **`TRUSTED_PROXY_CIDR`**: tras el primer arranque, medir la subred de Traefik en la red de la app y ponerla en
    la ficha del cliente (infra-ionos-vps, `docs/OPERACION.md` §4.3).
 3. **La aplicación**: sustituir `web/` por la aplicación real. Si escucha en otro puerto o hay más servicios
