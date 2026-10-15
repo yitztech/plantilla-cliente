@@ -189,6 +189,39 @@ regla y responde 422 con el código `invalid_characters` (§22).
 - Lo mismo vale para cualquier otro campo con un formato conocido (código postal, cantidades, códigos): solo sus
   caracteres.
 
+### 6.3 Longitud máxima de los textos
+
+Todo campo de texto tiene una longitud máxima lógica para su contenido, la misma en el frontend y en el backend.
+Ningún texto queda sin límite.
+
+| Campo | Máximo (caracteres) |
+|---|---|
+| Nombre, apellidos | 100 cada uno |
+| Correo | 254 |
+| Teléfono (tal como se escribe) | 25 |
+| Contraseña | 128 (con bcrypt, además, 72 bytes) |
+| Código postal | 10 |
+| Línea de dirección, ciudad | 200 |
+| Título, asunto | 150 |
+| Búsqueda | 100 |
+| URL | 2048 |
+| Mensaje de contacto, comentario | 2000 |
+| Descripción u otro texto largo | 5000 |
+| Cualquier otro texto corto | 255 |
+
+- Si un campo necesita otro límite, se fija en el contrato de la API y se usa el mismo en los dos lados.
+- Frontend: atributo `maxlength` en el campo (o `maxLength` en el componente) y, en los textos largos, un
+  contador visible. Al pegar un texto más largo, se avisa: no se recorta en silencio.
+- Backend: se comprueba después de quitar los espacios del principio y del final, contando caracteres (puntos de
+  código Unicode, no bytes), y se responde 422 con el código `too_long` y el máximo en el mensaje. Nunca se
+  recorta en silencio.
+- Base de datos: el mismo límite como `varchar(n)` o `CHECK (char_length(campo) <= n)`.
+- Listas: también tienen un máximo de elementos (p. ej. 100 etiquetas o destinatarios), y cada elemento, su
+  longitud.
+- El límite reduce el abuso (cargas enormes, saturación del servidor o de la base de datos, campos que rompen la
+  interfaz), pero no sustituye a la protección contra inyecciones: consultas parametrizadas (§26), validación
+  en el borde (§23) y escape al mostrar (§7).
+
 ## 7. Seguridad frontend
 
 Reglas obligatorias:
@@ -548,6 +581,8 @@ Toda respuesta de error usa Problem Details (RFC 9457), con `Content-Type: appli
   endpoint de subida declara el suyo, y el gateway se ajusta a él.
 - Nombre, apellidos, teléfono y demás campos con caracteres restringidos: las mismas reglas de §6.2, también en
   el servidor (422 con `invalid_characters`). El teléfono se guarda en E.164.
+- Longitud máxima de cada texto: la de §6.3, también en el servidor y en la base de datos (422 con `too_long`,
+  sin recortar en silencio). Ningún campo de texto sin límite.
 - Las reglas de negocio (unicidad, solapes, saldos) también las garantiza la base de datos con restricciones
   (`UNIQUE`, `CHECK`, `EXCLUDE`, claves foráneas).
 
