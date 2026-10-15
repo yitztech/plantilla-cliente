@@ -1,7 +1,8 @@
 # AGENTS.md — Estándares de ingeniería de la plataforma
 
 > Estándares de desarrollo de la plataforma yitztech, iguales en todos sus proyectos: la parte 1 para el
-> frontend y la parte 2 para el backend. Este archivo lo crea la plataforma y se audita: sus secciones no se
+> frontend, la parte 2 para el backend y la parte 3 para las pruebas automatizadas (web, API, apps móviles,
+> base de datos y seguridad). Este archivo lo crea la plataforma y se audita: sus secciones no se
 > borran ni se cambian. Lo propio de este proyecto va al final, en «Instrucciones del proyecto»; si algo de
 > allí contradice una regla de arriba, se pide una excepción a la plataforma.
 > El contrato con la plataforma (despliegue, compose, variables) está en `README.md`.
@@ -706,6 +707,124 @@ Además de lo de §16:
 - Cada endpoint nuevo tiene validación, autorización, límites y pruebas de autorización.
 - Los errores siguen §22 y los logs, §30.
 - `/api/health` sigue reflejando el estado real.
+
+# Parte 3 — Pruebas automatizadas
+
+## 34. Principios
+
+- Las pruebas son de este proyecto: viven en este repositorio y cambian en el mismo PR que el código que prueban.
+  No hay repositorios de pruebas compartidos; la plataforma solo da la base (la plantilla y esta parte 3).
+- Mismo JavaScript o TypeScript, misma versión de Node y mismo gestor de paquetes que el proyecto.
+- Un cambio no está terminado sin sus escenarios y sin ejecutar los afectados. La entrega dice cuáles se
+  ejecutaron y su resultado (§13, fase 5); nunca se afirma que pasó algo que no se ejecutó.
+- Un escenario no se borra, ni se debilita, ni se salta para que el CI pase (§12, §15).
+
+## 35. Estructura
+
+```
+tests/
+  escenarios/                  # web y API: Gherkin + playwright-bdd sobre Playwright Test
+    features/                  #   *.feature en español; plataforma/ trae los comunes de la plataforma
+    steps/                     #   definiciones de los pasos
+    fixtures/                  #   actores, datos de partida, correo (Mailpit)
+    playwright.config.(ts|js)
+  movil/                       # apps (si las hay): Gherkin + WebdriverIO + Appium
+    features/  steps/  wdio.conf.(ts|js)
+  base-datos/                  # pgTAP: *.sql
+  seguridad/                   # zap-reglas.tsv: reglas de ZAP ajustadas, cada una con su motivo
+compose.ci.yml                 # entorno de pruebas sobre compose.prod.yml
+```
+
+`compose.ci.yml` añade al compose de producción lo que solo existe en pruebas: un puerto local, una base de datos
+vacía con datos de partida, Mailpit para capturar los correos y dobles de los servicios externos (Google, pagos,
+calendarios). Se prueban las mismas imágenes que se van a publicar.
+
+## 36. Escribir escenarios
+
+- Gherkin en español (`Característica`, `Antecedentes`, `Escenario`, `Esquema del escenario`, `Dado`, `Cuando`,
+  `Entonces`, `Y`).
+- Lenguaje de negocio y declarativo: qué hace la persona y qué espera, no clics ni selectores.
+- Un comportamiento por escenario. Pocos pasos, reutilizables y con parámetros; nada de pasos copiados.
+- Los elementos se localizan por rol, etiqueta o texto accesible (`getByRole`, `getByLabel`); `data-testid` solo
+  si no hay otra forma. Nunca selectores CSS frágiles ni XPath.
+- Nunca esperas fijas (`waitForTimeout`): se espera a un estado (`expect(…).toBeVisible()`).
+- Cada escenario crea sus datos y no depende de otro: pueden correr en paralelo y en cualquier orden. Los que
+  cambian un estado global (el reloj, p. ej.) llevan `@reloj` y corren aparte.
+- Etiquetas: la regla de la auditoría (`@FE-11`) o el requisito (`@REQ-…`) que cubre; `@humo` si solo lee y puede
+  correr en producción; `@movil` y `@tableta` para esos perfiles; `@pendiente`, con un comentario que diga por
+  qué, es la única forma de saltar un escenario.
+- La carpeta `features/plataforma/` (salud, cabeceras, redirecciones, páginas legales, campos de §6.2 y §6.3,
+  errores de §22, autorización, límites, cookies y accesibilidad) se mantiene al día con la plantilla.
+
+```gherkin
+# language: es
+@FE-11 @BE-26
+Característica: Nombres sin números
+
+  Escenario: El nombre no admite dígitos
+    Dado que estoy en el registro
+    Cuando escribo "Juan2" en "Nombre"
+    Entonces el campo "Nombre" contiene "Juan"
+    Y veo el aviso "El nombre solo admite letras"
+```
+
+## 37. Ejecutar
+
+| Comando | Para qué |
+|---|---|
+| `escenarios` | Todos, sin ventana, en la terminal |
+| `escenarios:ver` | Con el navegador visible y más lento, para seguirlo |
+| `escenarios:ui` | Modo interactivo de Playwright: elegir escenarios y recorrer cada paso |
+| `escenarios:video` | Graba vídeo de todos los escenarios (`VIDEO=on`), también de los que pasan |
+| `escenarios:docker` | Igual que en el CI, con la imagen oficial de Playwright de la misma versión |
+| `escenarios:informe` | Abre el último informe HTML |
+| `movil:android`, `movil:ios` | Escenarios de la app en el emulador o el simulador |
+| `bd:pruebas` | pgTAP contra un PostgreSQL de la misma versión que producción |
+| `seguridad` | ZAP pasivo contra el entorno de pruebas |
+
+Por defecto se guardan la captura, la traza y el vídeo solo de los escenarios que fallan. La traza
+(`playwright show-trace`) muestra la página, la red y la consola en cada paso. Hay dos informes HTML: el de
+Playwright y el de Cucumber, con los pasos de Gherkin.
+
+## 38. Móvil
+
+- **Web en el móvil**: perfiles emulados de Playwright en cada PR (Android con Chromium, iPhone con WebKit,
+  tableta si aplica). Además, cada semana y antes de cada versión mayor, los escenarios `@movil` en Chrome del
+  emulador de Android y en Safari del simulador de iOS, con Appium.
+- **Apps**: WebdriverIO con Appium (UiAutomator2 en Android, XCUITest en iOS) y su integración con Cucumber.
+  Gherkin en español, con los mismos pasos de negocio que la web cuando el flujo es el mismo. En Expo o React
+  Native, cada elemento que se prueba lleva `testID` y `accessibilityLabel`; en Capacitor, los pasos cambian al
+  contexto WebView.
+- Se prueba una versión de prueba de la app (APK de depuración; `.app` para el simulador, sin firmar) que apunta al
+  entorno de pruebas, nunca a producción.
+- Dispositivos fijados por nombre y versión del sistema en `wdio.conf.*`: la versión mínima que soporta la app y
+  la última estable de cada sistema, y tableta si la app la soporta. En local, los AVD del Android Emulator y los
+  simuladores de Xcode instalados en el Mac.
+- Si un escenario falla, captura y grabación de la pantalla del dispositivo.
+- En el CI, Android en Ubuntu (emulador con KVM) e iOS en macOS (simulador).
+
+## 39. Base de datos y seguridad
+
+- **pgTAP** (`tests/base-datos/`): tablas, claves, índices y restricciones (las longitudes de §6.3, `UNIQUE`,
+  `EXCLUDE`), el rol de la app sin superusuario y con permisos mínimos, y RLS si la app es multiinquilino.
+- **Squawk** revisa cada migración nueva: bloqueos largos, `NOT NULL` sin valor por defecto, índices sin
+  `CONCURRENTLY`, columnas que el código anterior aún usa.
+- **Concurrencia**: las reglas críticas (dos reservas del mismo horario a la vez, saldos) se prueban en el
+  lenguaje del proyecto contra PostgreSQL real.
+- **CodeQL** (JS/TS y Go), **ZAP** (pasivo en cada PR; activo cada semana, nunca contra producción) y **Trivy**
+  (dependencias y secretos, cada semana).
+
+## 40. En el CI
+
+- Checks con los mismos nombres en todos los proyectos: `Verificar`, `Escenarios`, `Base de datos`, `Seguridad` y,
+  si hay app, `Móvil`. La regla de `main` los exige y la publicación depende de ellos.
+- El job `Móvil` corre siempre: si el PR no toca la app, termina en verde sin arrancar simuladores. El filtro va
+  dentro del job: un check obligatorio que no corre por `paths:` deja el PR bloqueado. Publicar una versión de
+  la app exige `Móvil` en verde.
+- Si algo falla, el informe, las capturas, los vídeos y las trazas se suben como artefacto del run.
+- Workflow semanal: Firefox, navegadores reales de móvil, ZAP activo, CodeQL, Trivy y los escenarios `@humo`
+  contra producción (solo lectura). Un fallo avisa.
+- Las pruebas de un PR terminan en menos de 15 minutos; si crecen, se reparten en varias máquinas.
 
 ## Instrucciones del proyecto
 
