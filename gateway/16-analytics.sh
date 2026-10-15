@@ -6,8 +6,10 @@
 #   UMAMI_WEBSITE_ID   UUID de la web en Umami
 set -eu
 
+# La imagen es de solo lectura: lo generado va a /tmp/nginx/ (tmpfs), que incluye nginx.conf
+mkdir -p /tmp/nginx/snippets
 origin=""
-snippet=/etc/nginx/snippets/analytics.conf
+snippet=/tmp/nginx/snippets/analytics.conf
 rm -f "$snippet"
 
 if [ -n "${UMAMI_SCRIPT_URL:-}" ] && [ -n "${UMAMI_WEBSITE_ID:-}" ]; then
@@ -19,11 +21,10 @@ if [ -n "${UMAMI_SCRIPT_URL:-}" ] && [ -n "${UMAMI_WEBSITE_ID:-}" ]; then
   cat > "$snippet" <<CONF
 # Generado por 16-analytics.sh: script de Umami en las páginas HTML
 proxy_set_header Accept-Encoding "";
-sub_filter_types text/html;
 sub_filter_once on;
 sub_filter '</head>' '<script defer src="${UMAMI_SCRIPT_URL}" data-website-id="${UMAMI_WEBSITE_ID}"></script></head>';
 CONF
 fi
 
 # Origen extra para script-src y connect-src de la CSP (vacío sin Umami)
-printf 'map $host $analytics_src { default "%s"; }\n' "${origin:+ $origin}" > /etc/nginx/conf.d/analytics.conf
+printf 'map $host $analytics_src { default "%s"; }\n' "${origin:+ $origin}" > /tmp/nginx/analytics.conf

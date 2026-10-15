@@ -20,6 +20,9 @@ real_ip_recursive on;
 # Protocolo original: Traefik ya terminó TLS, aquí $scheme siempre es "http"
 map $http_x_forwarded_proto $forwarded_proto { default $scheme; https https; }
 
+# Identificador de cada petición en el log (nginx.conf): el que se pasa a los servicios
+map "" $log_request_id { default $request_id; }
+
 server {
     listen 80;
     server_name _;
@@ -39,7 +42,7 @@ server {
     location / {
         include /etc/nginx/snippets/proxy-headers.conf;
         include /etc/nginx/snippets/security-headers.conf;
-        include /etc/nginx/snippets/analytics*.conf;
+        include /tmp/nginx/snippets/analytics*.conf;
         proxy_pass http://web_upstream;
     }
 }
