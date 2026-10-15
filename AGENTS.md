@@ -93,6 +93,14 @@ Cuando exista una incompatibilidad:
 
 No continuar una implementación bloqueada por una incompatibilidad sin resolver.
 
+### 3.5 Monorepos: una sola versión por paquete
+
+- Un mismo paquete lleva el mismo rango de versión en todos los workspaces.
+- Cada workspace declara en su `package.json` todo lo que importa: lo que hoy funciona por el *hoisting* falla en
+  una imagen que instala un solo workspace.
+- Un script lo comprueba dentro de las pruebas (y por tanto en el CI).
+- Un paquete atado a otro usa la versión que exige el otro, no la última.
+
 ## 4. Arquitectura y diseño del software
 
 Aplicar SOLID, DRY, KISS y YAGNI con criterio.
@@ -222,6 +230,13 @@ Ningún texto queda sin límite.
 - El límite reduce el abuso (cargas enormes, saturación del servidor o de la base de datos, campos que rompen la
   interfaz), pero no sustituye a la protección contra inyecciones: consultas parametrizadas (§26), validación
   en el borde (§23) y escape al mostrar (§7).
+- Cada límite vive en un solo sitio del código (p. ej. `limits` en el paquete de contratos compartido), y de ahí lo
+  toman el frontend, el backend y los mensajes. Una prueba compara esos valores con las restricciones de la base
+  de datos y falla si difieren o si un límite no tiene columna; un dato sin columna (la contraseña, que se guarda
+  como hash) se declara en esa prueba como excepción.
+- En una tabla que ya tiene datos, la restricción nueva se añade con `NOT VALID` (se exige en toda escritura nueva
+  sin bloquear el arranque) y se valida (`VALIDATE CONSTRAINT`) en una migración posterior, cuando los datos
+  antiguos ya cumplen.
 
 ## 7. Seguridad frontend
 
@@ -271,6 +286,27 @@ No utilizar ARIA cuando exista una alternativa HTML nativa adecuada.
 - Mantener interacciones predecibles.
 - Evitar animaciones innecesarias.
 - No modificar diseños aprobados sin autorización.
+
+### 9.1 Idiomas: todo texto nace en todos los idiomas
+
+En un proyecto con más de un idioma:
+
+- El idioma se decide por el dominio o por el prefijo de la ruta (`yourevent.fun/pt`), nunca por
+  `Accept-Language`, la IP, `localStorage` ni `?lang=`. La lista de idiomas vive en una sola tabla del código (nombre,
+  locale de `Intl`, rutas traducidas, catálogo) y todo lo demás se deriva de ella.
+- Todo componente, pantalla, correo, error o validación que muestre texto se entrega traducido a todos los idiomas
+  en el mismo cambio. No hay «luego lo traduzco» ni textos que caen al idioma principal.
+- Ningún texto fijo en el código ni en atributos (`aria-label`, `title`, `alt`, `placeholder`): claves semánticas
+  por área (`account.firstName`) en un catálogo por idioma, con traducción real y natural, las mismas variables y
+  marcas y las categorías de plural de cada idioma.
+- Frases completas con variables; nunca trozos traducidos concatenados.
+- Una prueba exige paridad entre catálogos: mismas claves, plurales, variables y marcas, ninguna clave sin uso y
+  ninguna citada en el código que no exista.
+- Textos legales: un documento por idioma.
+- El contenido de los usuarios (títulos, nombres, notas) nunca se traduce. Lo guardado no lleva texto traducido:
+  se guardan claves y cantidades, y se redactan al mostrarlos en el idioma de quien lee.
+- El tono de cada idioma (tuteo o usted, variante regional, tipografía) se fija en las instrucciones del proyecto.
+- Las apps móviles declaran los mismos idiomas (`CFBundleLocalizations` en iOS, `locales_config` en Android).
 
 ## 10. Rendimiento
 
@@ -485,6 +521,9 @@ El backend corre en la red del compose, detrás del gateway (nginx), que a su ve
   que es la del gateway.
 - URL absolutas (enlaces de correos, redirecciones, OAuth) con `SITE_URL` o `SITE_URL_<IDIOMA>`, nunca con el
   `Host` recibido sin comprobarlo contra los dominios del proyecto.
+- Idioma de la petición: el del dominio o el prefijo (§9.1), nunca `Accept-Language`. Las apps nativas, que usan un
+  solo dominio, pueden enviar `X-App-Locale`. Errores, validaciones, correos y notificaciones salen en ese idioma,
+  con `Content-Language`; las validaciones usan claves del catálogo como mensaje y se traducen al responder.
 - Variables de entorno con los nombres de la plataforma (`SITE_URL`, `SMTP_*`, `MAIL_FROM`, `LISTMONK_*`,
   `UMAMI_*`, `POSTGRES_*`…; tabla en `README.md`). No se renombran.
 - Configuración solo por variables de entorno, validadas al arrancar: si falta una obligatoria o no es válida, el
@@ -598,11 +637,14 @@ Toda respuesta de error usa Problem Details (RFC 9457), con `Content-Type: appli
 - Con sesión por cookie, toda petición que cambia estado comprueba el `Origin` contra los dominios del proyecto
   (protección CSRF).
 - Tokens de un solo uso (verificar correo, restablecer contraseña, invitaciones): aleatorios, guardados como hash,
-  con caducidad (una hora como máximo para restablecer) e invalidados al usarse.
+  con caducidad (una hora como máximo para restablecer) e invalidados al usarse. Restablecer la contraseña cierra
+  todas las sesiones y avisa por correo; el enlace va al dominio, y en el idioma, por el que entró el usuario.
 - Límite de intentos por IP real y por cuenta en login, registro, recuperación y formularios públicos (contacto,
   newsletter): 429 con `Retry-After`.
-- Login con Google: se validan `state`, `nonce` y el ID token (firma, `aud` igual a `GOOGLE_CLIENT_ID`, `iss` y
-  caducidad). El correo solo cuenta como verificado con `email_verified`.
+- Login con Google: se valida el ID token (firma, `aud` igual a `GOOGLE_CLIENT_ID`, `iss` y caducidad) y su
+  `nonce` si se envió; en el flujo de redirección, también `state`. El correo solo cuenta como verificado con
+  `email_verified`. Con el botón de Google Identity Services (popup y callback), el cliente OAuth solo necesita los
+  orígenes de JavaScript autorizados de cada dominio, sin URI de redirección.
 - API para terceros: una clave por cliente, guardada como hash, revocable y con los permisos mínimos. Nunca en la
   URL.
 
@@ -739,6 +781,10 @@ compose.ci.yml                 # entorno de pruebas sobre compose.prod.yml
 vacía con datos de partida, Mailpit para capturar los correos y dobles de los servicios externos (Google, pagos,
 calendarios). Se prueban las mismas imágenes que se van a publicar.
 
+Servicios solo de pruebas (Mailpit, dobles, un HTTPS local para las apps): fuera de `compose.prod.yml`, con un
+perfil de compose y la etiqueta `<proyecto>.solo-pruebas: "true"`. Un script, dentro de las pruebas, falla si
+alguno aparece en `compose.prod.yml`, en un Dockerfile o en un workflow de despliegue.
+
 ## 36. Escribir escenarios
 
 - Gherkin en español (`Característica`, `Antecedentes`, `Escenario`, `Esquema del escenario`, `Dado`, `Cuando`,
@@ -802,6 +848,9 @@ Playwright y el de Cucumber, con los pasos de Gherkin.
   simuladores de Xcode instalados en el Mac.
 - Si un escenario falla, captura y grabación de la pantalla del dispositivo.
 - En el CI, Android en Ubuntu (emulador con KVM) e iOS en macOS (simulador).
+- Si la app exige un origen HTTPS, un servicio solo de pruebas (p. ej. Caddy con `tls internal`) lo da en local
+  con una CA de pruebas. Esa CA solo entra en el build de depuración de Android y en el llavero del simulador
+  (`xcrun simctl keychain booted add-root-cert`), nunca en un build de publicación.
 
 ## 39. Base de datos y seguridad
 
