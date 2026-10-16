@@ -757,23 +757,34 @@ Además de lo de §16:
 - Las pruebas son de este proyecto: viven en este repositorio y cambian en el mismo PR que el código que prueban.
   No hay repositorios de pruebas compartidos; la plataforma solo da la base (la plantilla y esta parte 3).
 - Mismo JavaScript o TypeScript, misma versión de Node y mismo gestor de paquetes que el proyecto.
-- Un cambio no está terminado sin sus escenarios y sin ejecutar los afectados. La entrega dice cuáles se
+- Todo comportamiento visible o regla de validación, nuevo o cambiado, se entrega con su escenario en el mismo
+  cambio. Un cambio no está terminado sin ejecutar los escenarios afectados. La entrega dice cuáles se
   ejecutaron y su resultado (§13, fase 5); nunca se afirma que pasó algo que no se ejecutó.
-- Un escenario no se borra, ni se debilita, ni se salta para que el CI pase (§12, §15).
+- Si un escenario falla, se arregla el código o se actualiza el escenario con el motivo. Nunca se borra, ni se
+  debilita, ni se salta para que el CI pase (§12, §15).
+- **Primero en local, después en el CI o en producción.** Toda prueba, script o workflow nuevo se ejecuta y pasa en
+  local antes de llevarlo al CI; nunca al revés. Un cambio en un workflow se prueba ejecutando en local sus mismos
+  comandos, y la entrega dice lo que no se pudo comprobar.
 
 ## 35. Estructura
 
 ```
 tests/
-  escenarios/                  # web y API: Gherkin + playwright-bdd sobre Playwright Test
+  e2e/                         # web, API y apps: Gherkin + playwright-bdd sobre Playwright Test
     features/                  #   *.feature en español; plataforma/ trae los comunes de la plataforma
-    steps/                     #   definiciones de los pasos
-    fixtures/                  #   actores, datos de partida, correo (Mailpit)
+    steps/                     #   pasos; fixtures = estado y datos únicos por escenario
+    support/                   #   entorno (URLs y destino), ui-playwright e ui-ios (la interfaz común, §38)
+    scripts/summary.mjs        #   resumen por característica, etiqueta y plataforma
+    results/                   #   informe, results.json, capturas, vídeos y trazas (no se versiona)
     playwright.config.(ts|js)
-  movil/                       # apps (si las hay): Gherkin + WebdriverIO + Appium
-    features/  steps/  wdio.conf.(ts|js)
-  base-datos/                  # pgTAP: *.sql
-  seguridad/                   # zap-reglas.tsv: reglas de ZAP ajustadas, cada una con su motivo
+  api/                         # la API real: flujos, todos los endpoints y seguridad (§39)
+  db/                          # la base de datos: specs/ y support/ (base temporal, rol de la app)
+  mobile/                      # solo local y sin versionar: .appium/ (drivers) y .ca/ (CA de pruebas)
+  security/zap-reglas.tsv      # reglas de ZAP ajustadas, cada una con su motivo
+scripts/
+  test-all.mjs                 # `npm test`: todas las suites y un resumen (§37)
+  check-test-only.mjs          # falla si un servicio solo de pruebas llega a producción
+  mobile-test*.sh              # preparar, ejecutar y apagar el emulador y el simulador (§38)
 compose.ci.yml                 # entorno de pruebas sobre compose.prod.yml
 ```
 
@@ -782,97 +793,169 @@ vacía con datos de partida, Mailpit para capturar los correos y dobles de los s
 calendarios). Se prueban las mismas imágenes que se van a publicar.
 
 Servicios solo de pruebas (Mailpit, dobles, un HTTPS local para las apps): fuera de `compose.prod.yml`, con un
-perfil de compose y la etiqueta `<proyecto>.solo-pruebas: "true"`. Un script, dentro de las pruebas, falla si
-alguno aparece en `compose.prod.yml`, en un Dockerfile o en un workflow de despliegue.
+perfil de compose y la etiqueta `<proyecto>.solo-pruebas: "true"`. `scripts/check-test-only.mjs`, dentro de
+`test:unit`, falla si alguno aparece en `compose.prod.yml`, en un Dockerfile o en un workflow de despliegue. Un
+servicio nuevo solo de pruebas se añade a su lista.
 
 ## 36. Escribir escenarios
 
-- Gherkin en español (`Característica`, `Antecedentes`, `Escenario`, `Esquema del escenario`, `Dado`, `Cuando`,
-  `Entonces`, `Y`).
+- Gherkin en español (`# language: es`; `Característica`, `Antecedentes`, `Escenario`, `Esquema del escenario`,
+  `Dado`, `Cuando`, `Entonces`, `Y`).
 - Lenguaje de negocio y declarativo: qué hace la persona y qué espera, no clics ni selectores.
-- Un comportamiento por escenario. Pocos pasos, reutilizables y con parámetros; nada de pasos copiados.
+- Un comportamiento por escenario. Pocos pasos, reutilizables y con parámetros; nada de pasos copiados. Si falta
+  uno, `bddgen` dice cuál hay que escribir.
 - Los elementos se localizan por rol, etiqueta o texto accesible (`getByRole`, `getByLabel`); `data-testid` solo
-  si no hay otra forma. Nunca selectores CSS frágiles ni XPath.
-- Nunca esperas fijas (`waitForTimeout`): se espera a un estado (`expect(…).toBeVisible()`).
-- Cada escenario crea sus datos y no depende de otro: pueden correr en paralelo y en cualquier orden. Los que
-  cambian un estado global (el reloj, p. ej.) llevan `@reloj` y corren aparte.
-- Etiquetas: la regla de la auditoría (`@FE-11`) o el requisito (`@REQ-…`) que cubre; `@humo` si solo lee y puede
-  correr en producción; `@movil` y `@tableta` para esos perfiles; `@pendiente`, con un comentario que diga por
-  qué, es la única forma de saltar un escenario.
+  si no hay otra forma. Nunca selectores CSS frágiles ni XPath en los pasos.
+- Nunca esperas fijas para sincronizar: se espera a un estado (`expect(…).toBeVisible()`). La única pausa es la
+  del ritmo humano (§37).
+- Cada escenario crea sus datos únicos (`nuevaCuenta()`) y no depende del estado de la base de datos ni de otro
+  escenario: pueden correr en paralelo y en cualquier orden. Los que cambian un estado global (el reloj, p. ej.)
+  llevan `@reloj` y corren aparte.
+- Etiquetas:
+  - **Área**: `@registro`, `@perfil`, `@reservas`…
+  - **Tipo**: `@smoke` (lo imprescindible), `@validacion`, `@limites`, `@i18n` y `@api` (sin navegador).
+    `@solo-lectura` marca los que no escriben nada y pueden correr en producción.
+  - **Plataforma**: `@movil` si también corre dentro de la app (§38); `@solo-web` y `@sin-ios` o `@sin-android`
+    para excluirlo de una, con un comentario del motivo y el comportamiento cubierto por otro escenario.
+  - **Trazabilidad**: la regla de la auditoría (`@FE-11`) o el requisito (`@REQ-…`) que cubre.
+  - `@pendiente`, con un comentario que diga por qué, es la única forma de saltar un escenario.
 - La carpeta `features/plataforma/` (salud, cabeceras, redirecciones, páginas legales, campos de §6.2 y §6.3,
   errores de §22, autorización, límites, cookies y accesibilidad) se mantiene al día con la plantilla.
 
 ```gherkin
 # language: es
-@FE-11 @BE-26
-Característica: Nombres sin números
+@registro @movil
+Característica: Crear una cuenta
 
-  Escenario: El nombre no admite dígitos
-    Dado que estoy en el registro
-    Cuando escribo "Juan2" en "Nombre"
-    Entonces el campo "Nombre" contiene "Juan"
-    Y veo el aviso "El nombre solo admite letras"
+  @validacion @FE-11 @BE-26
+  Esquema del escenario: Nombre y apellidos descartan lo que no son letras
+    Dado que abro la página de registro
+    Cuando escribo "<escrito>" en el campo "<campo>"
+    Entonces el campo "<campo>" contiene "<queda>"
+
+    Ejemplos:
+      | campo       | escrito       | queda     |
+      | Nombre(s)   | Ana123 Ma_ría | Ana María |
 ```
 
 ## 37. Ejecutar
 
+Los mismos comandos en todos los proyectos, desde la raíz:
+
 | Comando | Para qué |
 |---|---|
-| `escenarios` | Todos, sin ventana, en la terminal |
-| `escenarios:ver` | Con el navegador visible y más lento, para seguirlo |
-| `escenarios:ui` | Modo interactivo de Playwright: elegir escenarios y recorrer cada paso |
-| `escenarios:video` | Graba vídeo de todos los escenarios (`VIDEO=on`), también de los que pasan |
-| `escenarios:docker` | Igual que en el CI, con la imagen oficial de Playwright de la misma versión |
-| `escenarios:informe` | Abre el último informe HTML |
-| `movil:android`, `movil:ios` | Escenarios de la app en el emulador o el simulador |
-| `bd:pruebas` | pgTAP contra un PostgreSQL de la misma versión que producción |
-| `seguridad` | ZAP pasivo contra el entorno de pruebas |
+| `npm test` | Todas las suites, una tras otra, con un resumen al final. Si la app no está arriba, la levanta con Docker. `npm test -- security db` ejecuta solo esas; `npm test -- --lista` las muestra; `npm test -- movil` añade las apps, que no entran por defecto |
+| `test:unit` | Sin Docker: esquemas, límites (DEV-12), una versión por paquete (DEV-11) y servicios solo de pruebas (§35) |
+| `test:api`, `test:endpoints`, `test:security` | La API real: flujos, todos los endpoints y seguridad (§39) |
+| `test:db` | La base de datos (§39) |
+| `e2e` | Escenarios web, sin ventana, en la terminal. `npm run e2e -- --grep @smoke` filtra por etiqueta |
+| `e2e:ver` | Una ventana, escenario a escenario y a ritmo humano, para seguirlo |
+| `e2e:headed` | Navegador visible, en paralelo |
+| `e2e:ui` | Modo UI de Playwright: elegir escenarios, recorrer cada paso, repetir y depurar |
+| `e2e:summary` | Resumen: qué pasa, qué falla, qué es inestable y qué se omite |
+| `e2e:report` | Abre el último informe HTML |
+| `e2e:android`, `e2e:ios` (y `:ver`) | Escenarios `@movil` en la app del emulador o del simulador |
+| `e2e:movil` | Android y después iOS, nunca a la vez (§38) |
 
-Por defecto se guardan la captura, la traza y el vídeo solo de los escenarios que fallan. La traza
-(`playwright show-trace`) muestra la página, la red y la consola en cada paso. Hay dos informes HTML: el de
-Playwright y el de Cucumber, con los pasos de Gherkin.
+En `npm test` una suite que falla no detiene a las demás; el resumen da el tiempo de cada una y el comando para
+repetir la que falló, y el código de salida es distinto de 0 si alguna falló.
+
+Variables (tiempos en milisegundos; 0 = a toda velocidad):
+
+| Variable | Qué hace | En `e2e:ver` |
+|---|---|---|
+| `E2E_SLOWMO` | Pausa tras cada acción (clic, relleno…) | 500 |
+| `E2E_TECLADO` | Pausa entre tecla y tecla al escribir | 90 |
+| `E2E_PAUSA` | Espera al final de cada escenario para ver el resultado | 2000 |
+| `E2E_VIDEO` | `on` (siempre), `off` o `retain-on-failure` (por defecto) | |
+| `E2E_BASE_URL`, `E2E_BASE_URL_<IDIOMA>` | URL de la app y de cada dominio de idioma | |
+| `E2E_TARGET` | `web` (por defecto), `android` o `ios` | |
+| `AVD`, `E2E_IOS_SIMULADOR` | Otro emulador o simulador | |
+
+Con el ritmo humano, los tiempos máximos de los escenarios se amplían solos. Por defecto se guardan la captura, la
+traza y el vídeo solo de los escenarios que fallan, en `tests/e2e/results/`. La traza
+(`npx playwright show-trace`) muestra la página, la red y la consola en cada paso.
 
 ## 38. Móvil
 
 - **Web en el móvil**: perfiles emulados de Playwright en cada PR (Android con Chromium, iPhone con WebKit,
-  tableta si aplica). Además, cada semana y antes de cada versión mayor, los escenarios `@movil` en Chrome del
-  emulador de Android y en Safari del simulador de iOS, con Appium.
-- **Apps**: WebdriverIO con Appium (UiAutomator2 en Android, XCUITest en iOS) y su integración con Cucumber.
-  Gherkin en español, con los mismos pasos de negocio que la web cuando el flujo es el mismo. En Expo o React
-  Native, cada elemento que se prueba lleva `testID` y `accessibilityLabel`; en Capacitor, los pasos cambian al
-  contexto WebView.
-- Se prueba una versión de prueba de la app (APK de depuración; `.app` para el simulador, sin firmar) que apunta al
-  entorno de pruebas, nunca a producción.
-- Dispositivos fijados por nombre y versión del sistema en `wdio.conf.*`: la versión mínima que soporta la app y
-  la última estable de cada sistema, y tableta si la app la soporta. En local, los AVD del Android Emulator y los
-  simuladores de Xcode instalados en el Mac.
-- Si un escenario falla, captura y grabación de la pantalla del dispositivo.
-- En el CI, Android en Ubuntu (emulador con KVM) e iOS en macOS (simulador).
+  tableta si aplica). Antes de cada versión mayor, los escenarios `@movil` también en Chrome del emulador de
+  Android y en Safari del simulador de iOS, en local.
+- **Apps: los mismos escenarios que la web.** Los `.feature` y los pasos son los mismos; los escenarios `@movil`
+  corren además dentro de la app real. Los pasos no llaman a Playwright ni a Appium: usan una interfaz `ui`
+  (abrir, escribir, pegar, pulsar, esperar un valor, un texto o una URL) con una implementación por plataforma:
+  - Web y WebView de Android (Capacitor): Playwright. En Android se conecta al WebView de la app por Chrome
+    DevTools (`_android`).
+  - iOS, y las apps nativas (Expo, React Native) en los dos sistemas: Appium (XCUITest y UiAutomator2) con
+    WebdriverIO. Playwright arranca y para el servidor de Appium (`webServer`). Appium y sus drivers se instalan
+    en el proyecto (`APPIUM_HOME=tests/mobile/.appium`), sin versionar.
+  - En Expo o React Native, cada elemento que se prueba lleva `testID` y `accessibilityLabel`.
+- **Build de pruebas** con su propio identificador (`<appId>.pruebas`): APK de depuración y `.app` de simulador sin
+  firma, contra el entorno local de pruebas, nunca contra producción. El build de publicación no cambia.
+- Cada escenario arranca con la app limpia (`pm clear` en Android, reinstalar en iOS) y en el idioma principal.
+- En el emulador y el simulador hay un reintento: un escenario que solo pasa al reintentar sale como inestable en
+  el resumen, no se oculta. Si falla, se adjunta una captura de la pantalla del dispositivo.
+- **Android e iOS, uno tras otro, nunca a la vez**: `e2e:movil` apaga una plataforma antes de encender la otra y la
+  apaga al terminar, con un resumen por plataforma. El emulador, los simuladores y Docker a la vez saturan la
+  máquina y las pruebas fallan por tiempo.
+- Dispositivos: en local, los AVD del Android Emulator y los simuladores de Xcode instalados en el Mac; iPhone y,
+  si la app la soporta, tableta (iPad, Medium Tablet). La versión mínima del sistema que soporta la app y la
+  última estable.
 - Si la app exige un origen HTTPS, un servicio solo de pruebas (p. ej. Caddy con `tls internal`) lo da en local
-  con una CA de pruebas. Esa CA solo entra en el build de depuración de Android y en el llavero del simulador
-  (`xcrun simctl keychain booted add-root-cert`), nunca en un build de publicación.
+  con una CA de pruebas. Esa CA solo entra en el build de depuración de Android (`src/debug/`) y en el llavero del
+  simulador (`xcrun simctl keychain booted add-root-cert`), nunca en un build de publicación.
+- **Solo en local, por ahora.** Las pruebas de las apps no corren en los PR ni en el despliegue hasta que la
+  plataforma lo active. El workflow `mobile-e2e.yml` queda manual (`workflow_dispatch`) y cada job lleva
+  `if: github.event.repository.private == false`: sin coste en un repositorio público, y en uno privado se omite
+  solo (los minutos de macOS cuestan 10 veces más). Android en Ubuntu con KVM y emulador; iOS en macOS, sin Docker,
+  con la pila levantada en el runner. Antes de publicar una versión de la app, `npm run e2e:movil` pasa en local y
+  su resumen va en el PR de la versión.
 
-## 39. Base de datos y seguridad
+## 39. Base de datos, API y seguridad
 
-- **pgTAP** (`tests/base-datos/`): tablas, claves, índices y restricciones (las longitudes de §6.3, `UNIQUE`,
-  `EXCLUDE`), el rol de la app sin superusuario y con permisos mínimos, y RLS si la app es multiinquilino.
+- **Base de datos** (`tests/db/`, en el lenguaje del proyecto: `node:test` con `pg`, o pgTAP si ya lo usa): cada
+  ejecución crea una base temporal en el PostgreSQL local (la misma versión mayor que producción), aplica todas
+  las migraciones desde cero como el rol de la app y la borra al terminar. Comprueba:
+  - las migraciones se aplican en orden desde una base vacía;
+  - ni contraseñas ni tokens en claro, solo sus hashes;
+  - las longitudes de la base de datos son las de §6.3 (la misma constante, DEV-12);
+  - obligatorios, únicos (`UNIQUE`, `EXCLUDE`) y valores permitidos (estados, tipos, idiomas);
+  - integridad referencial y borrados en cascada: borrar una cuenta borra todo lo suyo;
+  - el rol de la app sin superusuario ni `CREATEDB`, `CREATEROLE`, replicación o `BYPASSRLS`, y en la práctica no
+    puede crear roles ni bases, leer `pg_authid` ni ejecutar `COPY … TO PROGRAM`;
+  - RLS si la app es multiinquilino.
 - **Squawk** revisa cada migración nueva: bloqueos largos, `NOT NULL` sin valor por defecto, índices sin
   `CONCURRENTLY`, columnas que el código anterior aún usa.
 - **Concurrencia**: las reglas críticas (dos reservas del mismo horario a la vez, saldos) se prueban en el
   lenguaje del proyecto contra PostgreSQL real.
+- **API**, contra la API real y siempre en el CI, porque la usan la web y las apps:
+  - `test:api`: los flujos completos.
+  - `test:endpoints`: cada endpoint, en todos los idiomas; una entrada inválida recibe el error de validación de
+    §22 con el campo; un recurso inexistente o con formato inválido, 404 o 400, nunca 500; la configuración
+    pública no expone nada privado.
+  - `test:security`: sin sesión, todo lo privado responde 401; las escrituras exigen un origen permitido y la
+    cabecera propia (CSRF); una cuenta no ve ni toca los datos de otra (IDOR); no se escala por el cuerpo de la
+    petición; la cookie de sesión es `HttpOnly`, `Secure` y `SameSite`, no se puede adivinar y se revoca al salir;
+    el inicio de sesión se bloquea tras varios fallos por cuenta; la misma respuesta exista o no un correo; ninguna
+    respuesta incluye hashes, tokens ni trazas; SQL y HTML llegan como texto; cabeceras de seguridad y de caché;
+    cuerpos enormes y archivos inválidos se rechazan.
 - **CodeQL** (JS/TS y Go), **ZAP** (pasivo en cada PR; activo cada semana, nunca contra producción) y **Trivy**
   (dependencias y secretos, cada semana).
 
 ## 40. En el CI
 
-- Checks con los mismos nombres en todos los proyectos: `Verificar`, `Escenarios`, `Base de datos`, `Seguridad` y,
-  si hay app, `Móvil`. La regla de `main` los exige y la publicación depende de ellos.
-- El job `Móvil` corre siempre: si el PR no toca la app, termina en verde sin arrancar simuladores. El filtro va
-  dentro del job: un check obligatorio que no corre por `paths:` deja el PR bloqueado. Publicar una versión de
-  la app exige `Móvil` en verde.
-- Si algo falla, el informe, las capturas, los vídeos y las trazas se suben como artefacto del run.
-- Workflow semanal: Firefox, navegadores reales de móvil, ZAP activo, CodeQL, Trivy y los escenarios `@humo`
-  contra producción (solo lectura). Un fallo avisa.
+- Checks con los mismos nombres en todos los proyectos: `Verificar`, `Escenarios`, `Base de datos` y `Seguridad`.
+  La regla de `main` los exige y la publicación depende de ellos.
+  - `Escenarios`: el compose de producción más `compose.ci.yml`, `test:api`, `test:endpoints`, `npm run e2e` y
+    `e2e:summary` (este, siempre).
+  - `Base de datos`: `test:db` y Squawk.
+  - `Seguridad`: `test:security`, CodeQL y ZAP pasivo.
+- `Móvil` se añadirá cuando la plataforma pase las pruebas de las apps al CI (§38). Entonces correrá siempre: si el
+  PR no toca la app, terminará en verde sin arrancar simuladores. El filtro irá dentro del job, porque un check
+  obligatorio que no corre por `paths:` deja el PR bloqueado.
+- Si algo falla, `tests/e2e/results/` (informe, capturas, vídeos y trazas) se sube como artefacto `qa-evidence`.
+- Workflow semanal: Firefox, ZAP activo, CodeQL, Trivy y los escenarios `@smoke` con `@solo-lectura` contra
+  producción. Un fallo avisa.
 - Las pruebas de un PR terminan en menos de 15 minutos; si crecen, se reparten en varias máquinas.
 
 ## Instrucciones del proyecto
