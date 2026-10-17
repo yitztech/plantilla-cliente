@@ -7,10 +7,17 @@ FROM nginx:1.30-alpine
 ARG RELEASE_SHA=dev
 ENV RELEASE_SHA=${RELEASE_SHA} \
     # El entrypoint de nginx solo sustituye estas variables en la plantilla
-    NGINX_ENVSUBST_FILTER='^(TRUSTED_PROXY_CIDR|RELEASE_SHA)$'
+    NGINX_ENVSUBST_FILTER='^(TRUSTED_PROXY_CIDR|RELEASE_SHA)$' \
+    # La imagen es de solo lectura: la plantilla se genera en /tmp/nginx/ (tmpfs)
+    NGINX_ENVSUBST_OUTPUT_DIR=/tmp
 
+RUN rm /etc/nginx/conf.d/default.conf
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
 COPY gateway/snippets/ /etc/nginx/snippets/
-COPY gateway/default.conf.template /etc/nginx/templates/default.conf.template
+COPY gateway/default.conf.template /etc/nginx/templates/nginx/default.conf.template
 COPY --chmod=755 gateway/16-analytics.sh /docker-entrypoint.d/16-analytics.sh
 
+# Sin root: Docker deja a cualquier usuario escuchar en el 80 (ip_unprivileged_port_start=0).
+# 101 es nginx en la imagen oficial; numérico para que hadolint no lo rechace (DL3066)
+USER 101:101
 EXPOSE 80
