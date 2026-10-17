@@ -8,5 +8,5 @@ COPY nginx/nginx.conf /etc/nginx/nginx.conf
 COPY web/default.conf /etc/nginx/conf.d/web.conf
 COPY web/public/ /usr/share/nginx/html/
 
-USER nginx
+USER 101:101
 EXPOSE 80

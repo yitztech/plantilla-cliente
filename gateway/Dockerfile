@@ -17,6 +17,7 @@ COPY gateway/snippets/ /etc/nginx/snippets/
 COPY gateway/default.conf.template /etc/nginx/templates/nginx/default.conf.template
 COPY --chmod=755 gateway/16-analytics.sh /docker-entrypoint.d/16-analytics.sh
 
-# Sin root: Docker deja a cualquier usuario escuchar en el 80 (ip_unprivileged_port_start=0)
-USER nginx
+# Sin root: Docker deja a cualquier usuario escuchar en el 80 (ip_unprivileged_port_start=0).
+# 101 es nginx en la imagen oficial; numérico para que hadolint no lo rechace (DL3066)
+USER 101:101
 EXPOSE 80
