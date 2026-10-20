@@ -188,7 +188,7 @@ regla y responde 422 con el código `invalid_characters` (§22).
 | Teléfono | Dígitos, espacios, guion, punto, paréntesis, y `+` solo al principio | Letras y cualquier otro símbolo | `^\+?[0-9 ().-]+$`, con 8 a 15 dígitos |
 
 - Antes de validar, se quitan los espacios del principio y del final y se juntan los repetidos.
-- Nombre y apellidos: de 1 a 100 caracteres. Se guardan como los escribe la persona: sin pasarlos a mayúsculas
+- Nombre y apellidos: de 1 a 50 caracteres. Se guardan como los escribe la persona: sin pasarlos a mayúsculas
   ni «corregirlos».
 - Teléfono: además del formato, se valida con libphonenumber (libphonenumber-js en Node, nyaruka/phonenumbers en
   Go), con el país por defecto que fije el proyecto, y se guarda en E.164 (`+527771234567`). Una extensión va
@@ -205,9 +205,9 @@ Ningún texto queda sin límite.
 
 | Campo | Máximo (caracteres) |
 |---|---|
-| Nombre, apellidos | 100 cada uno |
+| Nombre, apellidos | 50 cada uno |
 | Correo | 254 |
-| Teléfono (tal como se escribe) | 25 |
+| Teléfono (tal como se escribe) | 20 |
 | Contraseña | 128 (con bcrypt, además, 72 bytes) |
 | Código postal | 10 |
 | Línea de dirección, ciudad | 200 |
