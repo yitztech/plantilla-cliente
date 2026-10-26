@@ -27,6 +27,9 @@ server {
     listen 80;
     server_name _;
 
+    # Redirecciones relativas: detrás de Traefik, una absoluta saldría con http:// (AGENTS.md §9.2)
+    absolute_redirect off;
+
     location = /healthz {
         add_header Content-Type text/plain;
         return 200 'ok';

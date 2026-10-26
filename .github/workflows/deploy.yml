@@ -96,6 +96,12 @@ jobs:
             printf '%s\n' "$cabeceras" | grep -qi "^ *$c:" || { echo "::error::Falta la cabecera $c"; exit 1; }
           done
 
+          # Indexación (AGENTS.md §9.2): una ruta inexistente da 404 real y robots.txt es texto
+          gw wget -qS -O /dev/null http://127.0.0.1/no-existe-humo 2>&1 | grep -q 'HTTP/1.1 404' \
+            || { echo "::error::Una ruta inexistente no responde 404 (soft 404)"; exit 1; }
+          gw wget -qS -O /dev/null http://127.0.0.1/robots.txt 2>&1 | grep -qi '^ *content-type: text/plain' \
+            || { echo "::error::/robots.txt no es text/plain"; exit 1; }
+
           for s in $(docker compose -f compose.prod.yml ps --services); do
             [ "$(docker compose -f compose.prod.yml exec -T "$s" id -u)" != "0" ] || { echo "::error::$s corre como root"; exit 1; }
           done

@@ -1,0 +1,4 @@
+# Lo privado se excluye con X-Robots-Tag: noindex, nunca con Disallow (AGENTS.md §9.2).
+# Con la web real, añadir: Sitemap: https://<dominio>/sitemap.xml
+User-agent: *
+Allow: /
