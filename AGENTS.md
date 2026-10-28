@@ -979,8 +979,10 @@ traza y el vídeo solo de los escenarios que fallan, en `tests/e2e/results/`. La
     el inicio de sesión se bloquea tras varios fallos por cuenta; la misma respuesta exista o no un correo; ninguna
     respuesta incluye hashes, tokens ni trazas; SQL y HTML llegan como texto; cabeceras de seguridad y de caché;
     cuerpos enormes y archivos inválidos se rechazan.
-- **CodeQL** (JS/TS y Go), **ZAP** (pasivo en cada PR; activo cada semana, nunca contra producción) y **Trivy**
-  (dependencias y secretos, cada semana).
+- **CodeQL** (JS/TS y Go), **ZAP** (pasivo en cada PR, también en las webs estáticas, y falla con cualquier aviso nuevo;
+  activo cada semana; nunca contra producción) y **Trivy** (dependencias y secretos, cada semana). Cada excepción de
+  ZAP va en `tests/security/zap-reglas.tsv` con su motivo, y un falso positivo de una sola ruta se saca con
+  `OUTOFSCOPE` y su URL.
 
 ## 40. En el CI
 
