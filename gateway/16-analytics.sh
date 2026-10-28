@@ -4,6 +4,9 @@
 # nada de terceros.
 #   UMAMI_SCRIPT_URL   p. ej. https://stats.yunitztech.com/script.js
 #   UMAMI_WEBSITE_ID   UUID de la web en Umami
+# Registro de errores (AUDITORIA INT-08): si hay SENTRY_DSN, la CSP permite conectar con el
+# origen de Bugsink, adonde el SDK del navegador manda los errores.
+#   SENTRY_DSN         p. ej. https://<clave>@errores.yunitztech.com/3
 set -eu
 
 # La imagen es de solo lectura: lo generado va a /tmp/nginx/ (tmpfs), que incluye nginx.conf
@@ -26,5 +29,18 @@ sub_filter '</head>' '<script defer src="${UMAMI_SCRIPT_URL}" data-website-id="$
 CONF
 fi
 
-# Origen extra para script-src y connect-src de la CSP (vacío sin Umami)
-printf 'map $host $analytics_src { default "%s"; }\n' "${origin:+ $origin}" > /tmp/nginx/analytics.conf
+errores=""
+if [ -n "${SENTRY_DSN:-}" ]; then
+  case "$SENTRY_DSN" in
+    https://*) ;;
+    *) echo "16-analytics.sh: SENTRY_DSN debe empezar por https://" >&2; exit 1 ;;
+  esac
+  # Sin la clave (lo que va antes de @) ni el proyecto: solo https://host
+  errores=$(printf '%s' "$SENTRY_DSN" | sed -E 's#^https://([^@/]*@)?([^/]+).*#https://\2#')
+fi
+
+# Orígenes extra de la CSP: Umami en script-src y connect-src; Bugsink solo en connect-src
+{
+  printf 'map $host $analytics_src { default "%s"; }\n' "${origin:+ $origin}"
+  printf 'map $host $errores_src { default "%s"; }\n' "${errores:+ $errores}"
+} > /tmp/nginx/analytics.conf
