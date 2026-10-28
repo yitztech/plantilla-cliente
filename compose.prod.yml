@@ -37,6 +37,8 @@ services:
       # Analítica con Umami (vacío = sin analítica). Las pone el alta del cliente.
       UMAMI_SCRIPT_URL: ${UMAMI_SCRIPT_URL:-}
       UMAMI_WEBSITE_ID: ${UMAMI_WEBSITE_ID:-}
+      # Registro de errores: con valor, la CSP permite conectar con Bugsink (SDK del navegador)
+      SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       web: { condition: service_healthy }
     healthcheck:
@@ -50,7 +52,8 @@ services:
   # manteniendo el nombre del servicio, o se añaden servicios y rutas en el gateway.
   # Variables que el alta pone a disposición del compose (añadir las que use la app):
   #   SITE_URL, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASSWORD, MAIL_FROM,
-  #   LISTMONK_URL, LISTMONK_LIST_UUID, UMAMI_SCRIPT_URL, UMAMI_WEBSITE_ID
+  #   LISTMONK_URL, LISTMONK_LIST_UUID, UMAMI_SCRIPT_URL, UMAMI_WEBSITE_ID,
+  #   SENTRY_DSN, SENTRY_ENVIRONMENT (errores del backend a Bugsink; AGENTS.md §30)
   web:
     <<: *hardening
     image: ${IMAGE_PREFIX:?Define IMAGE_PREFIX}-web:${IMAGE_TAG:-main}

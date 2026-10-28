@@ -56,9 +56,14 @@ prueba, en el `env:` del workflow. Las acciones de terceros van fijadas por comm
    la ficha del cliente (infra-ionos-vps, `docs/OPERACION.md` §4.3).
 3. **La aplicación**: sustituir `web/` por la aplicación real. Si escucha en otro puerto o hay más servicios
    (API, panel), ajustar los `upstream` y las `location` de `gateway/default.conf.template`. Las variables que
-   pone el alta (`SMTP_*`, `MAIL_FROM`, `LISTMONK_*`, `UMAMI_*`, `SITE_URL`) se añaden al `environment` del
-   servicio que las use. Los secretos (`POSTGRES_PASSWORD`, claves de la app) se declaran en la ficha con
-   `cliente_web_env_secretos` y el alta los genera.
+   pone el alta (`SMTP_*`, `MAIL_FROM`, `LISTMONK_*`, `UMAMI_*`, `SENTRY_*`, `SITE_URL`) se añaden al
+   `environment` del servicio que las use. Los secretos (`POSTGRES_PASSWORD`, claves de la app) se declaran en
+   la ficha con `cliente_web_env_secretos` y el alta los genera.
+4. **Errores y logs** ([AGENTS.md](AGENTS.md) §30): el alta crea el proyecto en Bugsink
+   (https://errores.yunitztech.com) y deja su DSN en `SENTRY_DSN`: en Coolify para el backend, y como variable
+   del repositorio en GitHub Actions para el frontend, que la recibe al compilar (`build-args:
+   SENTRY_DSN=${{ vars.SENTRY_DSN }}` en el job `publicar`). Con `SENTRY_DSN` en el gateway, su CSP ya permite
+   conectar con Bugsink. Los logs (stdout en JSON) se ven en https://logs.yunitztech.com sin hacer nada.
 
 ## Probar en local
 

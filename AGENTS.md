@@ -565,7 +565,7 @@ El backend corre en la red del compose, detrás del gateway (nginx), que a su ve
   solo dominio, pueden enviar `X-App-Locale`. Errores, validaciones, correos y notificaciones salen en ese idioma,
   con `Content-Language`; las validaciones usan claves del catálogo como mensaje y se traducen al responder.
 - Variables de entorno con los nombres de la plataforma (`SITE_URL`, `SMTP_*`, `MAIL_FROM`, `LISTMONK_*`,
-  `UMAMI_*`, `POSTGRES_*`…; tabla en `README.md`). No se renombran.
+  `UMAMI_*`, `SENTRY_*`, `POSTGRES_*`…; tabla en `README.md`). No se renombran.
 - Configuración solo por variables de entorno, validadas al arrancar: si falta una obligatoria o no es válida, el
   proceso termina con un error claro y no arranca a medias. Ningún secreto tiene valor por defecto.
 - Rutas fijas:
@@ -757,6 +757,18 @@ Toda respuesta de error usa Problem Details (RFC 9457), con `Content-Type: appli
 - Nunca en los logs: contraseñas, tokens, cookies, la cabecera `Authorization`, cuerpos completos ni datos
   personales completos (correo y teléfono, enmascarados).
 - Ningún endpoint de depuración en producción (`/debug/pprof`, volcados, consolas).
+- Nada de logs a archivo: la plataforma recoge stdout de cada contenedor (Fluent Bit) y lo guarda 30 días en
+  https://logs.yunitztech.com, separado por proyecto y servicio; las alertas de errores y de 5xx salen de ahí.
+- Errores no controlados del backend y del frontend al registro de errores de la plataforma (Bugsink,
+  https://errores.yunitztech.com) con el SDK oficial de Sentry del lenguaje (`@sentry/node`, `@sentry/nestjs`,
+  `@sentry/react`, `@sentry/vue`, `@sentry/browser`, `sentry-go`…):
+  - se inicializa solo si `SENTRY_DSN` tiene valor (en local y en el CI queda apagado);
+  - `release`: el SHA del commit (el mismo de `/version.json`); `environment`: `SENTRY_ENVIRONMENT`;
+  - `sendDefaultPii: false`, sin trazas de rendimiento ni Session Replay (`tracesSampleRate: 0`);
+  - los 4xx esperados (validación, 401, 404) no se envían; los 5xx y las excepciones, sí, con el `requestId`
+    como etiqueta;
+  - el frontend incrusta la DSN al compilar desde la variable `SENTRY_DSN` de GitHub Actions (no es secreta) y
+    la CSP permite `connect-src https://errores.yunitztech.com`.
 
 ## 31. Seguridad
 
