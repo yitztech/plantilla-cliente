@@ -1,6 +1,7 @@
 # Verifica cada cambio y, en main, publica las imágenes en GHCR y despliega en Coolify.
 #
 #   verificar (PR y main) → publicar (gateway y web) → desplegar (webhook de Coolify) → comprobar
+#   verificar cada noche (cron): ZAP y Trivy con lo que haya salido desde el último cambio; no publica
 #
 # `Verificar` es el check que exige la regla de main: Dockerfiles, reglas del compose,
 # prueba de humo con las imágenes que se van a publicar y análisis de vulnerabilidades.
@@ -19,6 +20,9 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # Verificación nocturna (AUDITORIA SEG-08), escalonada entre proyectos por el tope de jobs de la organización
+  schedule:
+    - cron: "50 7 * * *"
 
 # Un PR nuevo cancela la verificación anterior del mismo PR; en main no se cancela nada
 concurrency:
@@ -150,7 +154,8 @@ jobs:
   publicar:
     name: Publicar ${{ matrix.name }}
     needs: verificar
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !github.event.repository.is_template }}
+    # Ni en un PR ni en la verificación nocturna
+    if: ${{ github.event_name != 'pull_request' && github.event_name != 'schedule' && github.ref == 'refs/heads/main' && !github.event.repository.is_template }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
