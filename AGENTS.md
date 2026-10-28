@@ -764,7 +764,10 @@ Toda respuesta de error usa Problem Details (RFC 9457), con `Content-Type: appli
   `@sentry/react`, `@sentry/vue`, `@sentry/browser`, `sentry-go`…):
   - se inicializa solo si `SENTRY_DSN` tiene valor (en local y en el CI queda apagado);
   - `release`: el SHA del commit (el mismo de `/version.json`); `environment`: `SENTRY_ENVIRONMENT`;
-  - `sendDefaultPii: false`, sin trazas de rendimiento ni Session Replay (`tracesSampleRate: 0`);
+  - sin datos personales: en el SDK 11, `dataCollection` con `userInfo`, `cookies`, `httpHeaders`,
+    `urlQueryParams`, `databaseQueryData` y `stackFrameVariables` en `false` y `httpBodies: []` (en versiones
+    anteriores, `sendDefaultPii: false`);
+  - sin trazas de rendimiento ni Session Replay (`tracesSampleRate: 0`);
   - los 4xx esperados (validación, 401, 404) no se envían; los 5xx y las excepciones, sí, con el `requestId`
     como etiqueta;
   - el frontend incrusta la DSN al compilar desde la variable `SENTRY_DSN` de GitHub Actions (no es secreta) y
